@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.12"]
+
+    steps:
+    - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install package + test deps
+      # Unit tests exercise tool-id normalization, the permission merge, the
+      # observe/enforce state machine and redaction — none of which need the
+      # local app or a live LangChain agent (those are covered by integration
+      # tests run locally / against a running app). langchain-core installs as
+      # a declared dependency; securevector-ai-monitor is heavy, so the import
+      # of it is lazy and the unit suite runs without contacting it.
+      run: |
+        python -m pip install --upgrade pip
+        pip install langchain-core pytest
+        pip install -e . --no-deps
+
+    - name: Run tests
+      run: pytest tests/ -q
+
+    - name: Security scan — no secrets in source
+      run: |
+        echo "Scanning for potential secrets before any publish..."
+        if grep -r -i --exclude-dir=.git \
+           -E "\b(password|secret|private.*key)\s*[:=]\s*['\"][^'\"]{10,}" src/; then
+          echo "Potential secrets found in source code!"
+          exit 1
+        fi
+        echo "Security scan passed"

@@ -1,0 +1,15 @@
+SecureVector SDK for LangGraph
+Copyright (c) SecureVector
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This software integrates with the LangGraph framework via its public callback
+API. "LangGraph" and "LangChain" are trademarks of LangChain, Inc. This
+package is an independent, community integration and is not affiliated with,
+sponsored by, or endorsed by LangChain, Inc. The framework name is used only
+descriptively to identify compatibility (nominative fair use).
+
+This package depends on:
+  - securevector-ai-monitor (the local SecureVector app + SDK)
+  - langgraph (MIT, (c) LangChain, Inc.)
+  - langchain-core (Apache-2.0, (c) LangChain, Inc.)

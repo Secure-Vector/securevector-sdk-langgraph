@@ -1,0 +1,67 @@
+name: Release
+
+# Mirrors the securevector-guardian-model flow: publishing a GitHub Release
+# (tag vX.Y.Z on main) builds and publishes `securevector-sdk-langgraph` to
+# PyPI via trusted publishing (OIDC — no long-lived API key in this repo). The
+# project name comes from pyproject.toml's `name`; only the version is stamped
+# from the release tag.
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: release
+
+    permissions:
+      contents: read
+      id-token: write  # PyPI trusted publishing
+
+    steps:
+    - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+
+    - name: Set up Python
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+      with:
+        python-version: "3.10"
+
+    - name: Install build dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install build twine wheel
+
+    - name: Set version from release tag
+      run: |
+        TAG="${GITHUB_REF_NAME#v}"
+        sed -i "s/^version = \".*\"/version = \"$TAG\"/" pyproject.toml
+        echo "Publishing securevector-sdk-langgraph==$TAG"
+
+    - name: Security scan before build
+      run: |
+        if grep -r -i --exclude-dir=.git \
+           -E "\b(password|secret|private.*key)\s*[:=]\s*['\"][^'\"]{10,}" src/; then
+          echo "Potential secrets found in source code!"
+          exit 1
+        fi
+        echo "Security scan passed"
+
+    - name: Pre-build validation
+      run: |
+        python -m pip install langchain-core
+        PYTHONPATH=src python3 -c "
+        from securevector_sdk_langgraph import install, SecureVectorCallbackHandler
+        from securevector_sdk_langgraph.tool_id import RUNTIME_KIND
+        assert RUNTIME_KIND == 'langchain'
+        print('Adapter imports successfully')
+        "
+
+    - name: Build package
+      run: python -m build
+
+    - name: Check package
+      run: twine check dist/*
+
+    - name: Publish to PyPI (trusted publishing)
+      uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b  # release/v1
