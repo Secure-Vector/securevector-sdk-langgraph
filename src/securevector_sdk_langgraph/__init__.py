@@ -1,7 +1,8 @@
 """SecureVector SDK for LangGraph.
 
-Enforcement (recommended) — the documented ``wrap_tool_call`` middleware, which
-``create_agent`` / ``create_react_agent`` accept::
+Enforcement (recommended) — the ``wrap_tool_call`` middleware, accepted by the
+langgraph-backed ``create_agent`` (note: ``langgraph.prebuilt.create_react_agent``
+does NOT take a ``middleware`` argument — use ``create_agent``)::
 
     from securevector_sdk_langgraph import secure_middleware
     from langchain.agents import create_agent

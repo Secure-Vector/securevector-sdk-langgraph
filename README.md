@@ -15,7 +15,9 @@ audit chain live in the app, which must be running locally.
 ## Quick start
 
 **Enforcement (recommended)** — the documented `wrap_tool_call` middleware,
-accepted by `create_agent` / `create_react_agent`:
+accepted by the langgraph-backed `create_agent` (note:
+`langgraph.prebuilt.create_react_agent` does **not** take a `middleware`
+argument — use `create_agent`):
 
 ```python
 from securevector_sdk_langgraph import secure_middleware
