@@ -56,8 +56,6 @@ class AnalysisVerdict:
 class LocalAppClient:
     def __init__(self, cfg: Config):
         self.cfg = cfg
-        self._sv = None            # lazily-constructed SecureVectorClient
-        self._sv_tried = False
 
     # ------------------------------------------------------------------ #
     # REST transport (stdlib)                                            #
@@ -157,38 +155,37 @@ class LocalAppClient:
         return Verdict("allow", "unknown", "Not in registry — allowed by default", False, name)
 
     # ------------------------------------------------------------------ #
-    # (b)+(c) Secret + threat detection — reuse the shipped SDK          #
+    # (b)+(c) Secret + threat detection — the running app's /api/analyze       #
     # ------------------------------------------------------------------ #
-    def _ensure_sv(self):
-        if self._sv_tried:
-            return self._sv
-        self._sv_tried = True
-        try:
-            from securevector import SecureVectorClient  # type: ignore
-            try:
-                self._sv = SecureVectorClient(mode=self.cfg.analyze_mode)
-            except TypeError:
-                self._sv = SecureVectorClient()
-        except Exception as exc:  # securevector-ai-monitor not importable
-            log.warning("SecureVectorClient unavailable, analysis disabled: %s", exc)
-            self._sv = None
-        return self._sv
+    # We deliberately use the app's REST `/analyze` (same engine, same HTTP
+    # transport as permissions/audit) rather than constructing an in-process
+    # SecureVectorClient: the SDK already requires the app running, and the
+    # in-process local analyzer needs its own config/license and can raise on
+    # init. Tool input is user→tool ("outgoing"); tool output is fetched
+    # context→model, which is exactly the app's IDPI "incoming" scan mode.
+    _DIRECTION_MODE = {"tool_input": "outgoing", "tool_output": "incoming"}
 
     def analyze(self, text: str, direction: str) -> AnalysisVerdict:
         if not text:
             return AnalysisVerdict(False, 0, "empty")
-        sv = self._ensure_sv()
-        if sv is None:
-            raise AppUnreachable("SecureVectorClient unavailable")
+        mode = self._DIRECTION_MODE.get(direction, "outgoing")
         try:
-            res = sv.analyze(text)
-        except Exception as exc:
+            # The analyze route is mounted at /analyze (no /api prefix).
+            res = self._post("/analyze", {"text": str(text)[:102400], "mode": mode})
+        except (urllib.error.URLError, OSError, json.JSONDecodeError) as exc:
             raise AppUnreachable(f"analyze failed: {exc}") from exc
-        risk = int(getattr(res, "risk_score", 0) or 0)
+        if not isinstance(res, dict):
+            return AnalysisVerdict(False, 0, "no-result")
+        risk = int(res.get("risk_score") or 0)
+        is_threat = bool(res.get("is_threat", False))
+        # Secrets/data-leaks also surface via redaction: the app sets
+        # redacted_text (and action_taken=redact/block) when it catches a secret.
+        # Control (b) keys on that, control (c) on is_threat. A finding is either.
+        has_secret = bool(res.get("redacted_text")) or (res.get("action_taken") in ("redact", "block"))
+        finding = is_threat or has_secret
         return AnalysisVerdict(
-            bool(getattr(res, "is_threat", False)),
-            risk,
-            f"{direction} risk={risk}",
+            finding, risk,
+            f"{direction} threat={is_threat} secret={has_secret} risk={risk}",
         )
 
     # ------------------------------------------------------------------ #
