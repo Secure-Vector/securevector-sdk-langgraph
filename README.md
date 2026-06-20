@@ -8,9 +8,11 @@
 pip install securevector-sdk-langgraph
 ```
 
-This also installs the local SecureVector app (`securevector-ai-monitor`). The
-SDK is a thin interception layer; the detection engine and the tamper-evident
-audit chain live in the app, which must be running locally.
+> 📦 **One install — batteries included.** `pip install securevector-sdk-langgraph`
+> **also installs the local SecureVector app** (`securevector-ai-monitor`): the
+> adapter **and** the detection engine + tamper-evident audit chain arrive in a
+> single `pip install`. The SDK is a thin interception layer — **the app must be
+> running locally** (`securevector-app --web`) for it to do anything.
 
 ## Quick start
 
