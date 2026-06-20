@@ -3,7 +3,7 @@
 All notable changes to `securevector-sdk-langgraph` are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
-## [0.1.0] - Unreleased
+## [1.0.0]
 
 ### Added
 - Initial LangGraph adapter (Phase 2 of the SecureVector SDK roadmap, story #174).
