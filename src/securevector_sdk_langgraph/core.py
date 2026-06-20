@@ -1,22 +1,29 @@
 """Control routing — the three checks on every tool call.
 
-This is the actual new logic the adapter contributes. Detection already exists
-in the app; the job here is **interception + routing + the observe/enforce
-state machine**. Per intercepted call, in order:
+This is the framework-agnostic engine. Detection already exists in the app; the
+job here is **routing + the observe/enforce state machine**. The public surface
+is deliberately non-raising so each adapter can choose how to *act* on a block:
+
+* the LangChain/LangGraph ``wrap_tool_call`` middleware returns a ``ToolMessage``
+  to short-circuit (the documented block primitive);
+* the CrewAI tool wrapper raises ``ToolBlocked`` (CrewAI has no middleware).
+
+Per intercepted call, in order:
 
     (a) PERMISSIONS  — resolve allow/block for the tool id
     (b) SECRET scan  — \\
     (c) THREAT scan  — // over the serialized tool input (and, on end, output)
 
-``observe`` (default) is fail-open: everything is logged, nothing is ever
-blocked, and an unreachable app degrades to allow. ``enforce`` is fail-closed:
-a policy block, a high-risk input finding, or an unreachable app all DENY by
-raising ``ToolBlocked`` before the tool executes.
+``observe`` (default) is fail-open: everything is logged, nothing is blocked,
+and an unreachable app degrades to allow. ``enforce`` is fail-closed: a policy
+block, a high-risk input finding, or an unreachable app all mark the decision
+``blocked``.
 """
 
 import logging
 import re
 import sys
+from dataclasses import dataclass
 from typing import Optional
 
 from .client import LocalAppClient
@@ -44,10 +51,19 @@ def redact(text: object, limit: int = 500) -> str:
     return s[:limit]
 
 
-class Interceptor:
-    """Framework-agnostic engine. The LangChain handler feeds it normalized
-    (tool_id, text); this class owns the policy."""
+@dataclass
+class Decision:
+    """Result of evaluating a tool call's input. ``blocked`` already accounts
+    for mode — it is only True when the call should actually be stopped (i.e.
+    enforce mode + a deny). ``action`` is the audited action."""
 
+    blocked: bool
+    action: str          # allow | block | log_only
+    reason: str
+    risk: str
+
+
+class Interceptor:
     def __init__(self, cfg: Config, client: Optional[LocalAppClient] = None):
         self.cfg = cfg
         self.client = client or LocalAppClient(cfg)
@@ -62,30 +78,35 @@ class Interceptor:
             self._disclosed = True
             sys.stderr.write(
                 "[SecureVector] SDK is in ENFORCE mode — tool calls will be "
-                "BLOCKED if the local app is unreachable or a policy denies them.\n"
+                "BLOCKED if a policy denies them or the local app is unreachable.\n"
             )
 
-    def on_tool_start(
+    # ------------------------------------------------------------------ #
+    # Primary, non-raising API                                           #
+    # ------------------------------------------------------------------ #
+    def evaluate_input(
         self,
         tool_id: str,
         args_text: str,
         *,
         session_id: Optional[str] = None,
         request_id: Optional[str] = None,
-    ) -> None:
+    ) -> Decision:
+        """Run the three controls on a tool's input and return a Decision.
+        Records the audit row as a side effect. Never raises."""
         if not self.cfg.enabled:
-            return
+            return Decision(False, "allow", "sdk disabled", "")
         self._disclose_once()
         preview = redact(args_text)
 
         # (a) PERMISSIONS
         try:
             verdict = self.client.resolve_permission(tool_id)
-        except AppUnreachable as exc:
+        except AppUnreachable:
             if self.enforce:
-                raise ToolBlocked(tool_id, "local app unreachable (fail-closed)") from exc
+                return Decision(True, "block", "local app unreachable (fail-closed)", "unreachable")
             log.warning("app unreachable; observe mode allows %s", tool_id)
-            return
+            return Decision(False, "allow", "app unreachable (observe, fail-open)", "unreachable")
 
         if verdict.action == "block":
             self.client.record_audit(
@@ -94,9 +115,7 @@ class Interceptor:
                 is_essential=verdict.is_essential, args_preview=preview,
                 session_id=session_id, request_id=request_id,
             )
-            if self.enforce:
-                raise ToolBlocked(tool_id, verdict.reason)
-            return
+            return Decision(self.enforce, "block", verdict.reason, verdict.risk)
 
         # (b)+(c) SECRET + THREAT on the tool input
         a_in = None
@@ -115,9 +134,7 @@ class Interceptor:
                 is_essential=verdict.is_essential, args_preview=preview,
                 session_id=session_id, request_id=request_id,
             )
-            if should_block:
-                raise ToolBlocked(tool_id, f"input threat risk={a_in.risk_score}")
-            return
+            return Decision(should_block, act, f"input secret/threat risk={a_in.risk_score}", str(a_in.risk_score))
 
         # Allowed — record the decision.
         self.client.record_audit(
@@ -126,8 +143,9 @@ class Interceptor:
             is_essential=verdict.is_essential, args_preview=preview,
             session_id=session_id, request_id=request_id,
         )
+        return Decision(False, "allow", verdict.reason, verdict.risk)
 
-    def on_tool_end(
+    def scan_output(
         self,
         tool_id: str,
         output_text: str,
@@ -135,8 +153,8 @@ class Interceptor:
         session_id: Optional[str] = None,
         request_id: Optional[str] = None,
     ) -> None:
-        """Scan the tool RESULT for secrets / exfiltration. Output scanning is
-        observe-only (the tool already ran) — we log, we never raise here."""
+        """Scan the tool RESULT for secrets / exfiltration (observe-only — the
+        tool already ran). Records a row if anything is found. Never raises."""
         if not self.cfg.enabled:
             return
         try:
@@ -151,3 +169,12 @@ class Interceptor:
                 is_essential=False, args_preview=redact(output_text),
                 session_id=session_id, request_id=request_id,
             )
+
+    # ------------------------------------------------------------------ #
+    # Raising convenience (CrewAI wrapper, where blocking == raising)     #
+    # ------------------------------------------------------------------ #
+    def guard_input(self, tool_id: str, args_text: str, **kwargs) -> Decision:
+        decision = self.evaluate_input(tool_id, args_text, **kwargs)
+        if decision.blocked:
+            raise ToolBlocked(tool_id, decision.reason)
+        return decision

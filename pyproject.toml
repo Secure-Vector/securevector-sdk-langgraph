@@ -23,16 +23,17 @@ classifiers = [
     "Topic :: Security",
 ]
 
-# LangGraph runs tool nodes through langchain-core's callback manager, so the
-# same BaseCallbackHandler surface instruments LangGraph tool calls. Deps:
+# Enforcement uses the documented `wrap_tool_call` middleware (shared with
+# LangChain v1's create_agent); observe-mode logging uses langchain-core's
+# callback handler propagated through the graph. Deps:
 #   - securevector-ai-monitor: the local app + shipped SecureVectorClient
 #     (detection engine + tamper-evident audit chain live there). One
 #     `pip install securevector-sdk-langgraph` brings the adapter AND the app.
-#   - langgraph + langchain-core: the frameworks we hook.
+#   - langgraph + langchain v1: the frameworks we hook (middleware + callbacks).
 dependencies = [
     "securevector-ai-monitor>=4.7",
-    "langgraph>=0.2",
-    "langchain-core>=0.2",
+    "langgraph>=1.0",
+    "langchain>=1.0",
 ]
 
 [project.optional-dependencies]

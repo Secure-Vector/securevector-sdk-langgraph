@@ -60,7 +60,7 @@ jobs:
       run: |
         python -m pip install langchain-core
         PYTHONPATH=src python3 -c "
-        from securevector_sdk_langgraph import install, SecureVectorCallbackHandler
+        from securevector_sdk_langgraph import secure_middleware, install, SecureVectorCallbackHandler
         from securevector_sdk_langgraph.tool_id import normalize_tool_id, RUNTIME_KIND
         assert RUNTIME_KIND == 'langchain'
         print('Adapter imports successfully')

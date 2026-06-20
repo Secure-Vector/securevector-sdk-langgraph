@@ -12,18 +12,26 @@ This also installs the local SecureVector app (`securevector-ai-monitor`). The
 SDK is a thin interception layer; the detection engine and the tamper-evident
 audit chain live in the app, which must be running locally.
 
-LangGraph executes its tool nodes through `langchain-core`'s callback manager,
-so a single callback handler instruments every tool call inside your graph.
-
 ## Quick start
 
-```python
-from securevector_sdk_langgraph import install
+**Enforcement (recommended)** — the documented `wrap_tool_call` middleware,
+accepted by `create_agent` / `create_react_agent`:
 
-install(mode="observe")   # registers a global handler for every graph
+```python
+from securevector_sdk_langgraph import secure_middleware
+from langchain.agents import create_agent
+
+agent = create_agent(
+    model, tools,
+    middleware=[secure_middleware(mode="enforce")],
+)
 ```
 
-or attach it to a single graph run:
+A denied tool is short-circuited with a `ToolMessage` before it runs — no
+exceptions, no crashed graph.
+
+**Observe-only logging** for any graph (passes through `langchain-core`'s
+callback manager):
 
 ```python
 from securevector_sdk_langgraph import SecureVectorCallbackHandler
@@ -31,15 +39,25 @@ from securevector_sdk_langgraph import SecureVectorCallbackHandler
 graph.invoke(state, config={"callbacks": [SecureVectorCallbackHandler()]})
 ```
 
-or fully zero-config:
+**Raw `StateGraph` with custom tool nodes** (no middleware surface): gate the
+tool with LangGraph's documented `interrupt()` for human/programmatic approval:
 
 ```python
-import securevector_sdk_langgraph.auto   # reads env, installs globally
+from langgraph.types import interrupt
+
+@tool
+def run_query(sql: str):
+    interrupt({"action": "run_query", "args": {"sql": sql}})  # pause for approval
+    ...
 ```
+
+> Why these paths? LangGraph **callbacks are observability-only** — they cannot
+> cleanly block a tool. The **`wrap_tool_call` middleware** (for `create_agent`)
+> and **`interrupt()`** (for raw graphs) are the documented gates.
 
 ## What happens on every tool call
 
-Before a tool node runs (`on_tool_start`), the SDK:
+Before a tool node runs, the SDK:
 
 1. **(a) Permissions** — resolves an allow/block verdict for the tool, using the
    app's own precedence: cloud-pushed **synced** policy → local **override** →
@@ -47,9 +65,9 @@ Before a tool node runs (`on_tool_start`), the SDK:
 2. **(b)+(c) Secret & threat scan** — sends the serialized tool input through the
    app's `/analyze` pipeline.
 
-After the tool returns (`on_tool_end`), the result is scanned the same way to
-catch secrets / exfiltration in tool output. Every decision is written to the
-app's audit chain tagged `runtime_kind="langgraph"`.
+After the tool returns, the result is scanned the same way to catch secrets /
+exfiltration in tool output. Every decision is written to the app's audit chain
+tagged `runtime_kind="langgraph"`.
 
 ## observe vs enforce
 
@@ -59,10 +77,11 @@ app's audit chain tagged `runtime_kind="langgraph"`.
 | **enforce** (opt-in) | tool runs only if the verdict ≠ block | **tool denied** (fail-closed) |
 
 ```python
-install(mode="enforce")   # blocks denied tools and fails closed if the app is down
+agent = create_agent(model, tools, middleware=[secure_middleware(mode="enforce")])
 ```
 
-Enforce mode prints a one-time disclosure to stderr.
+Enforce mode prints a one-time disclosure to stderr. (Enforcement requires the
+middleware or `interrupt()` path; the observe callback handler always logs only.)
 
 ## Configuration
 

@@ -1,15 +1,18 @@
-"""The LangChain ``BaseCallbackHandler`` that wires tool calls into SecureVector.
+"""Observe-mode LangChain callback handler.
 
-``on_tool_start`` runs the three controls *before* the tool executes; in
-enforce mode a denial raises ``ToolBlocked``, which aborts the step. We set
-``raise_error = True`` and ``run_inline = True`` so LangChain propagates the
-exception synchronously instead of swallowing it — that is what makes enforce
-mode an actual gate rather than advisory logging.
+Callbacks are an **observability** surface — they cannot cleanly block a tool
+call (raising from them is version-dependent and tends to crash the run rather
+than return a clean result). So this handler is for **logging/audit** in
+contexts where the ``wrap_tool_call`` middleware isn't available (legacy
+AgentExecutor, raw LCEL chains). For real enforcement, use
+:func:`securevector_sdk_langgraph.secure_middleware` with ``create_agent``.
 
+Attach it via ``config={"callbacks": [SecureVectorCallbackHandler()]}``.
 ``run_id`` correlates start→end so the output scan is attributed to the same
-tool. Output scanning is observe-only.
+tool.
 """
 
+import json
 import logging
 import uuid
 from typing import Any, Dict, Optional
@@ -19,7 +22,7 @@ from .core import Interceptor
 
 log = logging.getLogger("securevector_sdk_langgraph")
 
-try:  # langchain-core is a declared dependency; guard so tests import standalone
+try:  # langchain-core ships with langchain; guard so tests import standalone
     from langchain_core.callbacks import BaseCallbackHandler
 except Exception:  # pragma: no cover
     try:
@@ -34,27 +37,28 @@ def _to_text(value: Any) -> str:
     if isinstance(value, str):
         return value
     try:
-        import json
         return json.dumps(value, default=str)
     except Exception:
         return str(value)
 
 
 class SecureVectorCallbackHandler(BaseCallbackHandler):
-    """Attach to any LangChain run via ``config={"callbacks": [handler]}`` or
-    register it globally with :func:`securevector_sdk_langgraph.install`."""
-
-    # Make enforce mode a real gate: propagate exceptions synchronously.
-    raise_error = True
-    run_inline = True
+    """Observe-only audit handler. Logs the three controls' findings for every
+    tool call; does not block (use ``secure_middleware`` to enforce)."""
 
     def __init__(self, mode: Optional[str] = None, base_url: Optional[str] = None, **kwargs):
-        self.cfg = Config.from_env(mode=mode, base_url=base_url, **kwargs)
+        # Force observe: callbacks cannot reliably block, so we never pretend to.
+        kwargs.pop("mode", None)
+        self.cfg = Config.from_env(mode="observe", base_url=base_url, **kwargs)
         self.interceptor = Interceptor(self.cfg)
         self._session = uuid.uuid4().hex[:16]
         self._runs: Dict[Any, str] = {}
+        if mode == "enforce":
+            log.warning(
+                "SecureVectorCallbackHandler runs in observe mode only; for "
+                "enforcement use secure_middleware(mode='enforce') with create_agent."
+            )
 
-    # -- LangChain callback surface -------------------------------------- #
     def on_tool_start(
         self,
         serialized: Optional[dict],
@@ -68,7 +72,7 @@ class SecureVectorCallbackHandler(BaseCallbackHandler):
         tool_id = normalize_tool_id(serialized, kwargs.get("name"))
         if run_id is not None:
             self._runs[run_id] = tool_id
-        self.interceptor.on_tool_start(
+        self.interceptor.evaluate_input(
             tool_id,
             _to_text(input_str),
             session_id=self._session,
@@ -77,7 +81,7 @@ class SecureVectorCallbackHandler(BaseCallbackHandler):
 
     def on_tool_end(self, output: Any, *, run_id: Any = None, **kwargs: Any) -> None:
         tool_id = self._runs.pop(run_id, None) or "unknown"
-        self.interceptor.on_tool_end(
+        self.interceptor.scan_output(
             tool_id,
             _to_text(output),
             session_id=self._session,
