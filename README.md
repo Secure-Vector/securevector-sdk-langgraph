@@ -1,5 +1,10 @@
 # SecureVector SDK for LangGraph
 
+[![PyPI](https://img.shields.io/pypi/v/securevector-sdk-langgraph)](https://pypi.org/project/securevector-sdk-langgraph/)
+[![Downloads](https://img.shields.io/pypi/dm/securevector-sdk-langgraph)](https://pypistats.org/packages/securevector-sdk-langgraph)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://pypi.org/project/securevector-sdk-langgraph/)
+[![License](https://img.shields.io/badge/license-Apache--2.0-green)](LICENSE)
+
 > Bring the SecureVector local threat monitor's three controls — **tool-call
 > permissions**, **secret / data-leak detection**, and **threat detection** —
 > to every LangGraph tool call, with tamper-evident audit logging. One import.
