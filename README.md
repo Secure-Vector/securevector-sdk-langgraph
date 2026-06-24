@@ -19,6 +19,24 @@ pip install securevector-sdk-langgraph
 > single `pip install`. The SDK is a thin interception layer — **the app must be
 > running locally** (`securevector-app --web`) for it to do anything.
 
+> 🌐 **Pointing at your own cloud? Use the lightweight install.** If you've deployed
+> SecureVector to your own cloud (e.g. with the
+> [Terraform modules](https://github.com/Secure-Vector)), you don't need the bundled
+> local app. Install **only the adapter** on the machine where your agents run, and
+> point it at your deployment:
+>
+> ```bash
+> # lightweight — adapter only, no local app (your env already has langgraph)
+> pip install securevector-sdk-langgraph --no-deps
+>
+> # point at your cloud endpoint (the URL Terraform output)
+> export SECUREVECTOR_SDK_APP_URL=https://<your-securevector-endpoint>
+> export SECUREVECTOR_API_KEY=<token>
+> ```
+> The adapter then forwards every tool call to your remote deployment instead of a
+> local app. The default `pip install securevector-sdk-langgraph` (no `--no-deps`)
+> still bundles the app for local use.
+
 ## Quick start
 
 **Enforcement (recommended)** — the documented `wrap_tool_call` middleware,
