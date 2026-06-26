@@ -28,9 +28,14 @@ pip install securevector-sdk-langgraph
 > # lightweight — adapter only, no local app (your env already has langgraph)
 > pip install securevector-sdk-langgraph --no-deps
 >
-> # point at your SecureVector endpoint
+> # point at your SecureVector endpoint — all you need for a private (in-VPC) endpoint
 > export SECUREVECTOR_SDK_APP_URL=https://<your-securevector-endpoint>
-> export SECUREVECTOR_API_KEY=<token>
+>
+> # OPTIONAL: only if your endpoint is publicly exposed and gated with an inbound token.
+> # A private endpoint in your own VPC needs no key. To gate a public one, use a free
+> # SecureVector cloud account API key or an SVET token — it gates access only; no agent
+> # data is sent to SecureVector.
+> export SECUREVECTOR_API_KEY=<SecureVector account key or SVET token>
 > ```
 > The adapter then forwards every tool call to your remote deployment instead of a
 > local app. The default `pip install securevector-sdk-langgraph` (no `--no-deps`)
