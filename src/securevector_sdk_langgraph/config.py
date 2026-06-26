@@ -2,16 +2,24 @@
 defaults.
 
 Environment variables (all optional):
-    SECUREVECTOR_SDK_APP_URL        local app base URL (default http://127.0.0.1:8741)
+    SECUREVECTOR_ENGINE_ENDPOINT    engine endpoint — where tool calls are sent for
+                                    analysis: the local app (default
+                                    http://127.0.0.1:8741) or your own self-host
+                                    engine (e.g. a Terraform deployment). The
+                                    ENGINE, never the SecureVector cloud. Unified
+                                    across the SDKs + the native plugins.
+    SECUREVECTOR_SDK_APP_URL        legacy alias for the engine endpoint; honored
+                                    only when SECUREVECTOR_ENGINE_ENDPOINT is unset
     SECUREVECTOR_SDK_MODE           observe | enforce          (default observe)
     SECUREVECTOR_SDK_TIMEOUT_MS     per-call verdict timeout   (default 3000)
     SECUREVECTOR_SDK_RISK_THRESHOLD enforce-block risk cutoff  (default 70)
     SECUREVECTOR_SDK_ANALYZE_MODE   SecureVectorClient mode    (default local)
     SECUREVECTOR_SDK_DISABLED       set truthy to no-op entirely
 
-Note: we deliberately use SECUREVECTOR_SDK_APP_URL, not the existing
-SECUREVECTOR_URL — the latter points at the *cloud* API in the rest of the
-ecosystem, whereas the SDK talks to the *local* app.
+Note: SECUREVECTOR_ENGINE_ENDPOINT (and its legacy alias
+SECUREVECTOR_SDK_APP_URL) address the *engine* — the local app or a self-host
+deployment. They are NOT SECUREVECTOR_URL, which points at the *cloud* API
+elsewhere in the ecosystem; the SDK never talks to the cloud directly.
 """
 
 import os
@@ -36,7 +44,8 @@ class Config:
     @classmethod
     def from_env(cls, **overrides) -> "Config":
         cfg = cls(
-            base_url=os.environ.get("SECUREVECTOR_SDK_APP_URL", DEFAULT_BASE_URL),
+            base_url=os.environ.get("SECUREVECTOR_ENGINE_ENDPOINT")
+            or os.environ.get("SECUREVECTOR_SDK_APP_URL", DEFAULT_BASE_URL),
             mode=os.environ.get("SECUREVECTOR_SDK_MODE", "observe").strip().lower(),
             timeout_ms=int(os.environ.get("SECUREVECTOR_SDK_TIMEOUT_MS", "3000")),
             threat_risk_threshold=int(
