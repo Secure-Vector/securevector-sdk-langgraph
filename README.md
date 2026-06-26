@@ -31,7 +31,7 @@ pip install securevector-sdk-langgraph
 > # point at your SecureVector endpoint — all you need for a private (in-VPC) endpoint
 > export SECUREVECTOR_SDK_APP_URL=https://<your-securevector-endpoint>
 >
-> # OPTIONAL: only if your endpoint is publicly exposed and gated with an inbound token.
+> # OPTIONAL: only if your endpoint is publicly exposed and gated with an inbound token (enforced by a v4.9.0+ engine; older images set but ignore it — gate by network instead).
 > # A private endpoint in your own VPC needs no key. To gate a public one, use a free
 > # SecureVector cloud account API key or an SVET token — it gates access only; no agent
 > # data is sent to SecureVector.
