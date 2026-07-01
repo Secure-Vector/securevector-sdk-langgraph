@@ -1,7 +1,14 @@
 """Single source of truth for the package version at runtime.
 
-The published version is stamped from pyproject.toml / the release tag by CI;
-this constant is what `securevector_sdk_langgraph.__version__` reports.
+Reads the installed distribution's version (stamped at build time from the
+release tag), so ``__version__`` always matches the published package without a
+manual bump here. Falls back to a local sentinel in a source checkout where the
+distribution metadata isn't installed.
 """
 
-__version__ = "1.0.0"
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    __version__ = version("securevector-sdk-langgraph")
+except PackageNotFoundError:  # source/editable checkout, not pip-installed
+    __version__ = "0.0.0+local"
