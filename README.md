@@ -86,6 +86,26 @@ def run_query(sql: str):
 > cleanly block a tool. The **`wrap_tool_call` middleware** (for `create_agent`)
 > and **`interrupt()`** (for raw graphs) are the documented gates.
 
+**LLM cost tracking** — add `cost_tracking_middleware()` and every model call's
+token usage (input / output / cached) posts to the app's **Cost Tracking**,
+where the pricing table turns it into real dollars (your agent runs on your own
+API keys) and per-agent budgets apply:
+
+```python
+from securevector_sdk_langgraph import secure_middleware, cost_tracking_middleware
+
+agent = create_agent(
+    model, tools,
+    middleware=[secure_middleware(mode="enforce"), cost_tracking_middleware()],
+)
+```
+
+Records are attributed to `agent_id="langgraph-agent"` by default — name your
+agent with `cost_tracking_middleware(agent_id="checkout-bot")` or
+`SECUREVECTOR_SDK_AGENT_ID`. The callback handler captures the same usage via
+`on_llm_end` for raw graphs. Cost capture is best-effort: an unreachable app
+never breaks the agent.
+
 ## What happens on every tool call
 
 Before a tool node runs, the SDK:
@@ -124,6 +144,7 @@ All optional, via env or `install(...)` kwargs:
 | `SECUREVECTOR_SDK_MODE` | `observe` | `observe` or `enforce` |
 | `SECUREVECTOR_SDK_TIMEOUT_MS` | `3000` | per-call verdict timeout |
 | `SECUREVECTOR_SDK_RISK_THRESHOLD` | `70` | risk score that blocks in enforce mode |
+| `SECUREVECTOR_SDK_AGENT_ID` | `langgraph-agent` | agent id shown in Cost Tracking |
 | `SECUREVECTOR_SDK_DISABLED` | _(unset)_ | set truthy to no-op |
 
 ## Compliance

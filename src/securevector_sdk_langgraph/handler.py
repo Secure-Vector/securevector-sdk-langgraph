@@ -19,6 +19,7 @@ from typing import Any, Dict, Optional
 
 from .config import Config
 from .core import Interceptor
+from .costs import CostTracker
 
 log = logging.getLogger("securevector_sdk_langgraph")
 
@@ -51,6 +52,7 @@ class SecureVectorCallbackHandler(BaseCallbackHandler):
         kwargs.pop("mode", None)
         self.cfg = Config.from_env(mode="observe", base_url=base_url, **kwargs)
         self.interceptor = Interceptor(self.cfg)
+        self.costs = CostTracker(self.cfg)
         self._session = uuid.uuid4().hex[:16]
         self._runs: Dict[Any, str] = {}
         if mode == "enforce":
@@ -90,3 +92,18 @@ class SecureVectorCallbackHandler(BaseCallbackHandler):
 
     def on_tool_error(self, error: BaseException, *, run_id: Any = None, **kwargs: Any) -> None:
         self._runs.pop(run_id, None)
+
+    def on_llm_end(self, response: Any, *, run_id: Any = None, **kwargs: Any) -> None:
+        """Capture LLM token usage for the app's Cost Tracking (issue #185).
+
+        ``response`` is an ``LLMResult``; chat generations carry an
+        ``AIMessage`` with ``usage_metadata``. Best-effort — never raises.
+        """
+        try:
+            for gen_list in getattr(response, "generations", None) or []:
+                for gen in gen_list or []:
+                    message = getattr(gen, "message", None)
+                    if message is not None:
+                        self.costs.record_message(message)
+        except Exception as exc:
+            log.debug("cost tracking failed: %s", exc)
