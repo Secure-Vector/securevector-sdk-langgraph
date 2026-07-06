@@ -14,6 +14,8 @@ Environment variables (all optional):
     SECUREVECTOR_SDK_TIMEOUT_MS     per-call verdict timeout   (default 3000)
     SECUREVECTOR_SDK_RISK_THRESHOLD enforce-block risk cutoff  (default 70)
     SECUREVECTOR_SDK_ANALYZE_MODE   SecureVectorClient mode    (default local)
+    SECUREVECTOR_SDK_AGENT_ID       agent id for Cost Tracking attribution
+                                    (default "<runtime>-agent")
     SECUREVECTOR_SDK_DISABLED       set truthy to no-op entirely
 
 Note: SECUREVECTOR_ENGINE_ENDPOINT (and its legacy alias
@@ -39,6 +41,7 @@ class Config:
     timeout_ms: int = 3000
     threat_risk_threshold: int = 70  # risk_score >= this blocks in enforce mode
     analyze_mode: str = "local"      # SecureVectorClient mode used for /analyze
+    agent_id: str = ""               # Cost Tracking attribution ("" → "<runtime>-agent")
     enabled: bool = True
 
     @classmethod
@@ -52,6 +55,7 @@ class Config:
                 os.environ.get("SECUREVECTOR_SDK_RISK_THRESHOLD", "70")
             ),
             analyze_mode=os.environ.get("SECUREVECTOR_SDK_ANALYZE_MODE", "local"),
+            agent_id=os.environ.get("SECUREVECTOR_SDK_AGENT_ID", ""),
             enabled=not _truthy(os.environ.get("SECUREVECTOR_SDK_DISABLED", "")),
         )
         # Explicit kwargs win over env, but only when actually provided.

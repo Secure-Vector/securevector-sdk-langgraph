@@ -221,3 +221,38 @@ class LocalAppClient:
             self._post("/api/tool-permissions/call-audit", body)
         except Exception as exc:  # never let audit failure break the agent
             log.debug("audit post failed: %s", exc)
+
+    # ------------------------------------------------------------------ #
+    # Cost tracking — LLM token usage → the app's Cost Tracking          #
+    # ------------------------------------------------------------------ #
+    def record_cost(
+        self,
+        *,
+        agent_id: Optional[str],
+        provider: str,
+        model_id: str,
+        input_tokens: int,
+        output_tokens: int,
+        input_cached_tokens: int = 0,
+    ) -> bool:
+        """POST one LLM call's token usage to ``/api/costs/track``.
+
+        The app resolves pricing by exact ``"{provider}/{model_id}"`` and
+        computes the dollar cost; unknown pairs are still recorded (at $0,
+        ``pricing_known=false``). Best-effort like ``record_audit``; returns
+        True when the app accepted the record.
+        """
+        body = {
+            "agent_id": agent_id or f"{RUNTIME_KIND}-agent",
+            "provider": provider,
+            "model_id": model_id,
+            "input_tokens": max(int(input_tokens or 0), 0),
+            "output_tokens": max(int(output_tokens or 0), 0),
+            "input_cached_tokens": max(int(input_cached_tokens or 0), 0),
+        }
+        try:
+            self._post("/api/costs/track", body)
+            return True
+        except Exception as exc:  # never let cost tracking break the agent
+            log.debug("cost post failed: %s", exc)
+            return False
