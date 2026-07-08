@@ -17,6 +17,11 @@ Environment variables (all optional):
     SECUREVECTOR_SDK_AGENT_ID       agent id for Cost Tracking attribution
                                     (default "<runtime>-agent")
     SECUREVECTOR_SDK_DISABLED       set truthy to no-op entirely
+    SECUREVECTOR_API_KEY            credential forwarded to the app as
+                                    Authorization: Bearer — required when the
+                                    app is a remote, token-gated deployment
+                                    (e.g. the Terraform self-host modules);
+                                    unused for the default loopback app
 
 Note: SECUREVECTOR_ENGINE_ENDPOINT (and its legacy alias
 SECUREVECTOR_SDK_APP_URL) address the *engine* — the local app or a self-host
@@ -43,6 +48,7 @@ class Config:
     analyze_mode: str = "local"      # SecureVectorClient mode used for /analyze
     agent_id: str = ""               # Cost Tracking attribution ("" → "<runtime>-agent")
     enabled: bool = True
+    api_key: str = ""                # forwarded as Authorization: Bearer to the app
 
     @classmethod
     def from_env(cls, **overrides) -> "Config":
@@ -57,6 +63,7 @@ class Config:
             analyze_mode=os.environ.get("SECUREVECTOR_SDK_ANALYZE_MODE", "local"),
             agent_id=os.environ.get("SECUREVECTOR_SDK_AGENT_ID", ""),
             enabled=not _truthy(os.environ.get("SECUREVECTOR_SDK_DISABLED", "")),
+            api_key=os.environ.get("SECUREVECTOR_API_KEY", ""),
         )
         # Explicit kwargs win over env, but only when actually provided.
         for key, value in overrides.items():

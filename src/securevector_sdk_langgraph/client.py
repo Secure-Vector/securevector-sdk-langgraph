@@ -26,7 +26,7 @@ from typing import Any, Dict, List, Optional
 
 from .config import Config
 from .errors import AppUnreachable
-from .tool_id import RUNTIME_KIND
+from .tool_id import RUNTIME_KIND, candidate_tool_ids
 
 log = logging.getLogger("securevector_sdk_langgraph")
 
@@ -63,11 +63,16 @@ class LocalAppClient:
     def _request(self, method: str, path: str, body: Optional[dict]) -> Any:
         url = f"{self.cfg.base_url.rstrip('/')}{path}"
         data = json.dumps(body).encode("utf-8") if body is not None else None
+        headers = {"Content-Type": "application/json"}
+        # Forward a credential to remote, token-gated deployments (no-op for the
+        # default loopback app, which has no inbound auth).
+        if getattr(self.cfg, "api_key", ""):
+            headers["Authorization"] = f"Bearer {self.cfg.api_key}"
         req = urllib.request.Request(
             url,
             data=data,
             method=method,
-            headers={"Content-Type": "application/json"},
+            headers=headers,
         )
         timeout = max(self.cfg.timeout_ms / 1000.0, 0.1)
         with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 (localhost)
@@ -117,15 +122,27 @@ class LocalAppClient:
                 out[str(k)] = item
         return out
 
+    @staticmethod
+    def _lookup(index: Dict[str, dict], candidates: List[str]) -> Optional[dict]:
+        """First candidate that matches (exact casing, then lowercased)."""
+        for cand in candidates:
+            hit = index.get(cand) or index.get(cand.lower())
+            if hit:
+                return hit
+        return None
+
     def _resolve(self, tool_id, essential, overrides, synced) -> Verdict:
         name = tool_id
-        low = tool_id.lower()
+        # Tier precedence dominates candidate specificity: a synced rule that
+        # matches ANY candidate beats an override that matches the raw name.
+        candidates = candidate_tool_ids(tool_id)
         emap = self._index(essential.get("tools"), "tool_id")
         omap = self._index(overrides.get("overrides"), "tool_id")
         smap = self._index(synced.get("synced"), "tool_id")
+        in_essential = self._lookup(emap, candidates) is not None
 
         # 1. Cloud-pushed synced policy wins.
-        s = smap.get(name) or smap.get(low)
+        s = self._lookup(smap, candidates)
         if s:
             effect = str(s.get("effect", "")).lower()
             action = "allow" if effect == "allow" else "block"
@@ -133,18 +150,18 @@ class LocalAppClient:
             ver = f" v{s['policy_version']}" if s.get("policy_version") is not None else ""
             return Verdict(
                 action, "synced", f"Synced policy '{policy}'{ver}: {effect}",
-                (name in emap or low in emap), name,
+                in_essential, name,
             )
         # 2. Local user override.
-        o = omap.get(name) or omap.get(low)
+        o = self._lookup(omap, candidates)
         if o:
             return Verdict(
                 o.get("action", "allow"), "overridden",
                 f"User override: {o.get('action')}",
-                (name in emap or low in emap), name,
+                in_essential, name,
             )
         # 3. Essential registry default.
-        e = emap.get(name) or emap.get(low)
+        e = self._lookup(emap, candidates)
         if e:
             return Verdict(
                 e.get("effective_action") or e.get("default_action") or "allow",
