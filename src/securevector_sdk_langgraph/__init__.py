@@ -45,6 +45,7 @@ from .costs import cost_tracking_middleware
 from .errors import AppUnreachable, SecureVectorError, ToolBlocked
 from .handler import SecureVectorCallbackHandler
 from .middleware import secure_middleware
+from .tool_id import candidate_tool_ids
 
 log = logging.getLogger("securevector_sdk_langgraph")
 
@@ -55,6 +56,7 @@ __all__ = [
     "install",
     "SecureVectorCallbackHandler",
     "Config",
+    "candidate_tool_ids",
     "SecureVectorError",
     "ToolBlocked",
     "AppUnreachable",

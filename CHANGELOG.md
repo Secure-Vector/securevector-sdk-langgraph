@@ -3,6 +3,21 @@
 All notable changes to `securevector-sdk-langgraph` are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.2.1]
+
+### Fixed
+- **`SECUREVECTOR_API_KEY` now actually sent**: the env var was documented but
+  never read — no `Authorization` header was attached, so remote token-gated
+  deployments rejected every request (bricked enforce mode / silently-off
+  observe mode). The client now reads it into `Config.api_key` and forwards it
+  as `Authorization: Bearer` on every call, matching the hermes SDK.
+- **MCP `server:tool` policy matching**: MCP tools surfaced with a sanitized
+  flat name (`mcp_<server>_<tool>`) never matched cloud policies keyed in the
+  `<server>:<tool>` form, silently falling through to default-allow. Permission
+  resolution now expands each name via `candidate_tool_ids()` (also exported)
+  and matches every plausible split, tier precedence unchanged — parity with
+  the hermes SDK.
+
 ## [1.2.0]
 
 ### Added
